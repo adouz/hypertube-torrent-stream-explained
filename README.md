@@ -10,7 +10,7 @@ this is an explanation on how to stream torrent videos with low level library to
  - [range-parser](https://www.npmjs.com/package/range-parser): to parse range 
  - [fluent-ffmpeg](https://www.npmjs.com/package/fluent-ffmpeg): to convert non supported formats
 - |___ fluent-ffmpeg uses ffmpeg that you have in your computer if you dont have it use [@ffmpeg-installer/ffmpeg](https://www.npmjs.com/package/@ffmpeg-installer/ffmpeg)
-
+- [converting with ffmpeg guid](https://opensource.com/article/17/6/ffmpeg-convert-media-file-formats)
 
 # the stream endpoint (torrentStream.js file)
 ```javascript
@@ -18,6 +18,7 @@ const logger = require('./logger'); // ignore this, its just a fancy console.log
 const torrentStream = require('torrent-stream');
 const parseRange = require('range-parser');
 const ffmpeg = require('fluent-ffmpeg');
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
 module.exports = (req, res) => {
     /**
@@ -31,7 +32,7 @@ module.exports = (req, res) => {
      * trackers: is the trackers that come with the magnet link
      */
     const engine = torrentStream(torrentId, {
-        path: '/Users/adouz/Desktop/tt/',
+        path: '/Users/adouz/goinfre/',
         trackers: req.query.tr
     });
     /**
@@ -51,7 +52,7 @@ module.exports = (req, res) => {
          * exetract file extension from videFile.name
          * we going to need this to know if we can stream the video directly 
          * or we will have to convert it first
-         * browser supported formats: (.ogg/.ogv) .mp4 .webm
+         * most browser supported formats: (.ogg/.ogv) .mp4 .webm
          * other format you will have to convert it to a supported format
          */
         const re = /(?:\.([^.]+))?$/;
@@ -75,7 +76,7 @@ module.exports = (req, res) => {
             /**
              * if theres somthing wrong with range we will response with 415
              */
-            if (ranges.type !== 'bytes' && ranges === -1 && ranges === -2) 
+            if (range.type !== 'bytes' && range === -1 && range === -2) 
                 return res.status(415).end(); //415 Unsupported Media Type
             console.log(range);
             /**
@@ -104,7 +105,7 @@ module.exports = (req, res) => {
                 res.set({
                     'Content-Type': `video/${ext === 'ogv' ? 'ogg' : ext }`,
                 })
-                stream.pipe(res);
+                stream.pipe(res)
             }else if (ext === 'mkv'){
                 /**
                  * this if the file is not a supported video format
@@ -115,8 +116,17 @@ module.exports = (req, res) => {
                     'Content-Type': `video/webm`,
                 })
                 /**
-                 * TODO: convert to webm using fluent-ffmpeg and stream
+                 * converting mkv to webm using fluent-ffmpeg and streaming it
                  */
+                ffmpeg(stream) //set stream file
+                    .setFfmpegPath(ffmpegPath) // set path of ffmpeg
+                    .format('webm')  //set output format to webm
+                    .videoCodec('libvpx') //transcoding video using libvpx library (https://en.wikipedia.org/wiki/Libvpx)
+                    .audioCodec('libvorbis') //transcoding audio using libvorbis library (https://en.wikipedia.org/wiki/Vorbis)
+                    .on('progress', (p) => logger.info('[ffmpeg Processing] ' + p.frames + ' frames'))          
+                    .on('start', (s) => logger.info(`[ffmpeg started] ${s}`))
+                    .on('error', (e) => logger.info(`[ffmpeg error] ${e}`))
+                    .pipe(res);
 
             }else return res.status(415).end(); //415 Unsupported Media Type
         }else{
@@ -138,7 +148,6 @@ module.exports = (req, res) => {
     engine.on('download', (i) => { logger.info(`download ${i}`) });
     engine.on('upload', (i) => { logger.info(`upload ${i}`) });
     engine.on('torrent', (i) => { logger.info(`torrent ${i}`) });
-
 };
 ```
 # to run server
